@@ -2,6 +2,7 @@ package users
 
 import (
 	"fmt"
+	"github.com/travis40508/bookstore_users_api/utils/date_utils"
 	"github.com/travis40508/bookstore_users_api/utils/errors"
 )
 
@@ -31,7 +32,9 @@ func (user *User) Get() *errors.RestErr {
 	return nil
 }
 
-func (user User) Save() *errors.RestErr {
+// this needs to be a pointer, since we're mutating the struct that we have this method on
+// if it wasn't a pointer, it'd only mutate a copy
+func (user *User) Save() *errors.RestErr {
 	// we already have a user
 	current := usersDB[user.Id]
 	if current != nil {
@@ -41,7 +44,9 @@ func (user User) Save() *errors.RestErr {
 		}
 		return errors.NewBadRequestError(fmt.Sprintf("user %d already exists", user.Id))
 	}
-	usersDB[user.Id] = &user
 
+	user.DateCreated = date_utils.GetNowString()
+
+	usersDB[user.Id] = user
 	return nil
 }
