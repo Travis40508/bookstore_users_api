@@ -5,10 +5,16 @@ import (
 	"github.com/travis40508/bookstore_users_api/datasources/mysql/users_db"
 	"github.com/travis40508/bookstore_users_api/utils/date_utils"
 	"github.com/travis40508/bookstore_users_api/utils/errors"
+	"strings"
 )
 
 // used for persisting and retrieving/accessing objects
 // this is the only point where we interact with database
+
+const (
+	indexUniqueEmail = "email_UNIQUE"
+	queryInsertUser  = "INSERT INTO users(first_name, last_name, email, date_created) VALUES(?, ?, ?, ?);"
+)
 
 var (
 	// retrieves a user based on id
@@ -42,18 +48,37 @@ func (user *User) Get() *errors.RestErr {
 // this needs to be a pointer, since we're mutating the struct that we have this method on
 // if it wasn't a pointer, it'd only mutate a copy
 func (user *User) Save() *errors.RestErr {
-	// we already have a user
-	current := usersDB[user.Id]
-	if current != nil {
-		// email is already registered
-		if current.Email == user.Email {
-			return errors.NewBadRequestError(fmt.Sprintf("email %s already exists", user.Email))
-		}
-		return errors.NewBadRequestError(fmt.Sprintf("user %d already exists", user.Id))
+	stmt, err := users_db.Client.Prepare(queryInsertUser)
+
+	if err != nil {
+		return errors.NewInternalServerError(err.Error())
 	}
+	// close as quickly as possible, this will be called at the end of the function block, so it's not missed
+	defer stmt.Close()
 
 	user.DateCreated = date_utils.GetNowString()
 
-	usersDB[user.Id] = user
+	insertResult, err := stmt.Exec(user.FirstName, user.LastName, user.Email, user.DateCreated)
+
+	if err != nil {
+		// we see this whenever we get our error on postman
+		if strings.Contains(err.Error(), indexUniqueEmail) {
+			return errors.NewBadRequestError(fmt.Sprintf("email %s already exists", user.Email))
+		}
+		return errors.NewInternalServerError(fmt.Sprintf("error when trying to save user: %s", err.Error()))
+	}
+
+	// this block is the equivalent as the above, but it's not as performant as the above, nor does it have the error-handling, or reusability
+	//result, err := users_db.Client.Exec(queryInsertUser, user.FirstName, user.LastName, user.Email, user.DateCreated)
+
+	userId, err := insertResult.LastInsertId()
+
+	if err != nil {
+		return errors.NewInternalServerError(fmt.Sprintf("error when trying to save user: %s", err.Error()))
+	}
+
+	user.Id = userId
+
+	// no need to return a user, since we're passing in a pointer reference
 	return nil
 }
