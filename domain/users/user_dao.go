@@ -13,35 +13,41 @@ import (
 
 const (
 	indexUniqueEmail = "email_UNIQUE"
+	errorNoRows      = "no rows in result set"
 	queryInsertUser  = "INSERT INTO users(first_name, last_name, email, date_created) VALUES(?, ?, ?, ?);"
-)
-
-var (
-	// retrieves a user based on id
-	usersDB = make(map[int64]*User)
+	queryGetUser     = "SELECT id, first_name, last_name, email, date_created FROM users WHERE id=?;"
 )
 
 // there are advantages to making these methods, rather than functions
 // return user on success, or rest error on fail
 // we pass in a pointer so we can modify that object, directly
 // so if an error isn't returned, we know we now have a valid user from the database
+// Get always looks based on primary key/id, 'Find' always looks based on parameters
 func (user *User) Get() *errors.RestErr {
 	// this makes us import our users_db package
 	// which call call 'init()', running the code in there
-	if err := users_db.Client.Ping(); err != nil {
-		panic(err)
+	stmt, err := users_db.Client.Prepare(queryGetUser)
+	if err != nil {
+		return errors.NewInternalServerError(err.Error())
 	}
 
-	result := usersDB[user.Id]
-	if result == nil {
-		return errors.NewNotFoundError(fmt.Sprintf("user %d not found", user.Id))
+	defer stmt.Close()
+
+	// this is the parameter we pass in so that our query statement above can work
+	// it should be noted that if you query more than one user (with Query(), rather than QueryRow()), that it once again
+	// opens the DB and must be closed on defer
+	result := stmt.QueryRow(user.Id)
+	// we're sending a pointer because if we don't pass a pointer, the scan will just assign these values
+	// to a copy, rather than to the user we're adding this method on
+	if err := result.Scan(&user.Id, &user.FirstName, &user.LastName, &user.Email, &user.DateCreated); err != nil {
+		// this means we have an error when trying to retrieve this row from the database
+		// the scan takes our result from our query
+		if strings.Contains(err.Error(), errorNoRows) {
+			return errors.NewNotFoundError(fmt.Sprintf("user %d not found", user.Id))
+		}
+		return errors.NewInternalServerError(fmt.Sprintf("error when trying to get user %d: %s", user.Id, err.Error()))
 	}
 
-	user.Id = result.Id
-	user.FirstName = result.FirstName
-	user.LastName = result.LastName
-	user.Email = result.Email
-	user.DateCreated = result.DateCreated
 	return nil
 }
 
