@@ -1,21 +1,18 @@
 package users
 
 import (
-	"fmt"
 	"github.com/travis40508/bookstore_users_api/datasources/mysql/users_db"
 	"github.com/travis40508/bookstore_users_api/utils/date_utils"
 	"github.com/travis40508/bookstore_users_api/utils/errors"
-	"strings"
+	"github.com/travis40508/bookstore_users_api/utils/mysql_utils"
 )
 
 // used for persisting and retrieving/accessing objects
 // this is the only point where we interact with database
 
 const (
-	indexUniqueEmail = "email_UNIQUE"
-	errorNoRows      = "no rows in result set"
-	queryInsertUser  = "INSERT INTO users(first_name, last_name, email, date_created) VALUES(?, ?, ?, ?);"
-	queryGetUser     = "SELECT id, first_name, last_name, email, date_created FROM users WHERE id=?;"
+	queryInsertUser = "INSERT INTO users(first_name, last_name, email, date_created) VALUES(?, ?, ?, ?);"
+	queryGetUser    = "SELECT id, first_name, last_name, email, date_created FROM users WHERE id=?;"
 )
 
 // there are advantages to making these methods, rather than functions
@@ -42,10 +39,7 @@ func (user *User) Get() *errors.RestErr {
 	if err := result.Scan(&user.Id, &user.FirstName, &user.LastName, &user.Email, &user.DateCreated); err != nil {
 		// this means we have an error when trying to retrieve this row from the database
 		// the scan takes our result from our query
-		if strings.Contains(err.Error(), errorNoRows) {
-			return errors.NewNotFoundError(fmt.Sprintf("user %d not found", user.Id))
-		}
-		return errors.NewInternalServerError(fmt.Sprintf("error when trying to get user %d: %s", user.Id, err.Error()))
+		return mysql_utils.ParseError(err)
 	}
 
 	return nil
@@ -55,7 +49,6 @@ func (user *User) Get() *errors.RestErr {
 // if it wasn't a pointer, it'd only mutate a copy
 func (user *User) Save() *errors.RestErr {
 	stmt, err := users_db.Client.Prepare(queryInsertUser)
-
 	if err != nil {
 		return errors.NewInternalServerError(err.Error())
 	}
@@ -64,14 +57,11 @@ func (user *User) Save() *errors.RestErr {
 
 	user.DateCreated = date_utils.GetNowString()
 
-	insertResult, err := stmt.Exec(user.FirstName, user.LastName, user.Email, user.DateCreated)
-
-	if err != nil {
-		// we see this whenever we get our error on postman
-		if strings.Contains(err.Error(), indexUniqueEmail) {
-			return errors.NewBadRequestError(fmt.Sprintf("email %s already exists", user.Email))
-		}
-		return errors.NewInternalServerError(fmt.Sprintf("error when trying to save user: %s", err.Error()))
+	insertResult, saveErr := stmt.Exec(user.FirstName, user.LastName, user.Email, user.DateCreated)
+	if saveErr != nil {
+		// this attempts to convert saveErr into a MySqlErr, since both implement the Error interface
+		// they don't always return a mysql error, though. sometimes they'll just return a string, it's only an attempt
+		return mysql_utils.ParseError(saveErr)
 	}
 
 	// this block is the equivalent as the above, but it's not as performant as the above, nor does it have the error-handling, or reusability
@@ -80,7 +70,7 @@ func (user *User) Save() *errors.RestErr {
 	userId, err := insertResult.LastInsertId()
 
 	if err != nil {
-		return errors.NewInternalServerError(fmt.Sprintf("error when trying to save user: %s", err.Error()))
+		return mysql_utils.ParseError(err)
 	}
 
 	user.Id = userId
