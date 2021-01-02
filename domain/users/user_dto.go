@@ -18,9 +18,13 @@ type User struct {
 }
 
 // making this a method (rather than a function) so the user can validate itself
+// this isn't needed since the database-itself has a rule that email must not be nil
+// this way we can send in patches without explicitly mentioning the email
 func (user *User) Validate() *errors.RestErr {
 	// trim spaces of email
 	user.Email = strings.TrimSpace(strings.ToLower(user.Email))
+	user.FirstName = strings.TrimSpace(user.FirstName)
+	user.LastName = strings.TrimSpace(user.LastName)
 	if user.Email == "" {
 		return errors.NewBadRequestError("invalid email address")
 	}

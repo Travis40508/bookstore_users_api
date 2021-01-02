@@ -13,9 +13,9 @@ import (
 // either a nil user and error, or a user and nil error
 // never both non-nil
 func CreateUser(user users.User) (*users.User, *errors.RestErr) {
-	if err := user.Validate(); err != nil {
-		return nil, err
-	}
+	//if err := user.Validate(); err != nil {
+	//	return nil, err
+	//}
 
 	if err := user.Save(); err != nil {
 		return nil, err
@@ -34,4 +34,38 @@ func GetUser(id int64) (*users.User, *errors.RestErr) {
 		return nil, err
 	}
 	return result, nil
+}
+
+func UpdateUser(isPartial bool, user users.User) (*users.User, *errors.RestErr) {
+	current, err := GetUser(user.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	// we'll want this in case they try to pass in an empty string for their email
+	// we actually don't need this anymore, because we've told the database-itself that email must not be nil
+	//if err := user.Validate(); err != nil {
+	//	return nil, err
+	//}
+
+	if isPartial {
+		if user.FirstName != "" {
+			current.FirstName = user.FirstName
+		}
+		if user.LastName != "" {
+			current.LastName = user.LastName
+		}
+		if user.Email != "" {
+			current.Email = user.Email
+		}
+	} else {
+		current.FirstName = user.FirstName
+		current.LastName = user.LastName
+		current.Email = user.Email
+	}
+
+	if err := current.Update(); err != nil {
+		return nil, err
+	}
+	return current, nil
 }

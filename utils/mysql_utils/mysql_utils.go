@@ -11,6 +11,8 @@ const (
 )
 
 func ParseError(err error) *errors.RestErr {
+	// trying to cast our error to a mysql error, which also follows the error interface
+	// sometimes they don't return an error of this form, though
 	sqlErr, ok := err.(*mysql.MySQLError)
 
 	if !ok {
